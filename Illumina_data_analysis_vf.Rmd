@@ -1,0 +1,626 @@
+---
+title: "Comprehensive Epigenomic Analysis for Identifying DNA Methylation Panel for Ovarian Cancer Detection"
+author: "Ye Zhang"
+date: "Biomedical Engineering Department, Johns Hopkins University, Baltimore, MD 21218"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Abstract
+
+&nbsp;&nbsp;&nbsp; Aberrant DNA methylation is a well-known contributor to carcinogenesis and the study of DNA methylation as a biomarker for cancer detection has become increasely popular. However, the translation of discoverd DNA methylation biomarkers into commercially available clinical test are limited. Therefore a comprehensive approach to identify highly-specific DNA methylation biomarkers and develop a panel of DNA methylation genes for specific cancer detection is under urgent demand. In this study, DNA methylation data of 96 samples achieved from Illumina MethylationEPIC BeadChip array was analyzed to identify methylation genes that are highly specific to high-grade serous ovarian carcinoma (HGSOC).
+
+## Introduction
+
+&nbsp;&nbsp;&nbsp; Over the past decades, biomarkers have been playing an increasely important role in cancer detection and diagnosis with the advancement of genomic profiling technilogies. More specifically, cancer biomarkers have been applied for measureing the risk of cancer development in a specific biological sample (e.g. tissue), or the risk of cancer progression/response to a certain therapeutic strategy [1]. For example, anaplastic lymphoma kinase (ALK) gene mutation has been found in several types of cancer including non-small cell lung cancer (NSCLC) and neuroblastoma, and checking ALK gene rearrangements and overexpression has been used to determine NSCLC prognosis and plan cancer treatment [2,3]. Also, studies have shown that people who inherit certain mutation in BRCA1 and BRCA2 genes have a higher risk of getting breast cancer [4]. Therefore the BRCA gene test can help people with family history of breast cancer to determine whether they carry an inherited BRCA mutation and help unaffected high-risk people for close surveillance or even prevention. 
+
+&nbsp;&nbsp;&nbsp; Among the advancement of cancer biomarker studies, DNA methylation is a well-known contributor to all forms of cancer and can occur early in carcinogenesis, sometimes even prior to the development of precursor lesions [5,6]. The application of DNA methylation as a biomarker for cancer detection has emerged in recent years and shows potential in developing powerful tools for cancer prediction and diagnositics. For example, the DNA test of aberrant NDRG4 and BMP3 methylation in stool samples as part of coloresctal cancer screening has received FDA approval in 2014 [7]. Despite these encouraging development in cancer biomarker studies, there is still a large gap between initial biomarker discovery studies and their clinical translation. A recent review article performed a search of the PubMed database and found that around 1,800 DNA methylation biomarkers reported in more than 14,000 scientific articles, only 14 biomarkers have been translated into a commercially available clinical test [8]. Therefore a comprehensive approach to identify highly-specific DNA methylation biomarkers and develop small panels of DNA methylation biomarkers for a specific cancer is still under demand.
+
+&nbsp;&nbsp;&nbsp; High-grade serous ovarian carcinoma (HGSOC) is one of most lethal cancers, with over 60% of women not diagnosed until late stages [9]. Though some studies have reported aberrant gene promoter methylation related to HGSOC, there still remains an urgent need for the identification of biomarkers capable of detecting HGSOC. In this project, we investigated the DNA methylation data resulted from MethylationEPIC BeadChip array, which contains genome-wide methylomic screening of 96 tissue samples including 23 HGSOC, 23 endometrioid endometrial carcinoma (EEC), 10 uterine serous carcinoma (USC), 4 high-grade tumors named "unclassified cohort" and 36 normal ovarian samples [10]. Using a comprehensive epigenomic approach, we identified novel panels of DNA methylation genes in ovarian cancers, which can potentially used to distinguish HGSOC from healthy tissues with high specificity. 
+
+## Methods
+
+### *Data loading and preprocessing*
+
+&nbsp;&nbsp;&nbsp; DNA methylation data were processed from Illumina MethylationEpic array iDat files using functions implemented in the ```minfi``` package [11] from the Bioconductor bioinformatics software project [12]. First a core sample sheet containing the Illumina ExpicArray information of the 96 samples and a sample diagnosis table were loaded using ```xlsx``` package [13]. After matching Illumina MethylationEpic array sample information and phenodata, methylation data were imported from idat files using ```minfi``` package. With ```ilm10b2.hg19``` package [14] from Bioconductor, the updated hg19 annotations for the probe sequences represented on the Illumina Expicarray were remapped to hg38 based on the UCSC liftOver mapping [15]. 
+
+```{r echo=FALSE, include=FALSE, cache=FALSE}
+## install packages
+packages<-c("devtools","knitr","rmarkdown","xlsx","rtracklayer","GenomicRanges","plyr","dplyr","ggplot2","NMF","tibble","pheatmap","kableExtra")
+
+for (i in packages){
+  if(!require(i,character.only = T,quietly=T,warn.conflicts = F)){
+    install.packages(i, repos = "http://cran.us.r-project.org")
+  }
+  require(i,character.only = T,quietly=T,warn.conflicts = F)
+}
+
+source("https://bioconductor.org/biocLite.R")
+biocLite("minfi")   # Install minfi package
+Sys.setenv(JAVA_HOME = "C:/Program Files/Java/jre1.8.0_181/")
+source("https://bioconductor.org/biocLite.R")
+biocLite("IlluminaHumanMethylationEPICmanifest")
+
+#install.packages("rJava", type = 'source')
+library(minfi)
+library(rmarkdown)
+library(knitr)
+library(rtracklayer)
+library(GenomicRanges)
+library(plyr)
+library(dplyr)
+library(NMF)
+library(tibble)
+library(pheatmap)
+library(kableExtra)
+library(ggplot2)
+
+#library(data.table)
+#library(pROC)
+#install.packages("gridExtra")
+#library(gridExtra)
+#library(grid)
+#if(!require("kableExtra")) {
+#  devtools::install_github("haozhu233/kableExtra")
+#  library(kableExtra)
+#}
+#library(xlsx)
+```
+
+```{r echo=FALSE, eval=FALSE}
+### first work out sample names
+## open core sample sheet
+# Reads in csv data that contains a header with rows of unequal length, do not convert text to factors, skip the first 7 lines
+sampleSheet=read.csv("96 Illumina  Epic Sample sheet  _TLWang _01192017.csv",header=T,fill=T,as.is=T,skip=7)
+#creates a 1:96 character vector ,aSamps, containing the sample names without spaces from the Illumina Sample List
+aSamps=gsub(" ","",as.character(sampleSheet[,1]))
+
+### phenodata
+#Define pData as matrix of data consisting of columns 1-3 and rows 1-96 (with header)
+pData=read.xlsx("sample diagnosis for data analysis_01302017.xlsx",sheetI=1)[,1:3][1:96,]
+#creates a 1:96 character vector ,pSamps, containing the sample names without spaces from phenodata
+pSamps=gsub(" ","",as.character(pData[,1]))
+
+#redundant from above
+#pSamps=gsub(" ","",as.character(pData[,1]))
+
+#apply the function "grep" to list matches between pSamps and aSamps character strings, lists row in aSamps where pSamps match occurs maintains dimensions
+matches=sapply(pSamps,grep,x=aSamps,fixed=T)
+
+### use pSamps as row names for pData
+rownames(pData)=pSamps
+#Adds rownames to samplesheet in the order dictated by matches
+rownames(sampleSheet)[matches]=pSamps
+
+## sentrix is a vector mapping pdata names to beta value column names
+#Sentrix_ID and Position give positional info on array for decoding CG bead-probe locations - effectively makes a hybrid between the two
+sentrix=paste(sampleSheet$Sentrix_ID, sampleSheet$Sentrix_Position,sep="_")
+#Adds row names from samplesheet to the sentrix vector
+names(sentrix)=rownames(sampleSheet)
+```
+
+```{r echo=FALSE, eval=FALSE}
+## Read in methylation data
+data = "J:/Lab Projects/Methylation/illumina"
+targets=read.metharray.sheet(data)
+#targets$Basename=file.path(".",data,targets$Slide,paste(targets$Slide,targets$Array,sep="_"))    # Mac version?
+targets$Basename=file.path(data,targets$Slide,paste(targets$Slide,targets$Array,sep="_"))
+RGset=read.metharray.exp(targ = targets)
+
+annotation(RGset)["array"]="IlluminaHumanMethylationEPIC"
+annotation(RGset)["annotation"]="ilm10b2.hg19"
+manifest <- getManifest(RGset)
+
+prob=preprocessIllumina(RGset)
+source("https://bioconductor.org/biocLite.R")
+biocLite("IlluminaHumanMethylationEPICanno.ilm10b2.hg19")
+probF=preprocessFunnorm(RGset)
+beta=getBeta(probF)
+```
+
+```{r echo=FALSE, eval=FALSE}
+diagnosis=as.character(pData$Diagnosis)
+names(diagnosis)=sentrix[rownames(pData)]
+
+normSamps=sentrix[rownames(pData)[grep("^[CEF]M",pData$Diagnosis)]]
+hgscSamps=sentrix[rownames(pData)[grep("ovarian HGSC",pData$Diagnosis)]]
+usSamps=sentrix[rownames(pData)[grep("uterine serous|USC",pData$Diagnosis)]]
+ueSamps=sentrix[rownames(pData)[grep("uterine endometrioid|uterine EM|endometrioid endometrial",pData$Diagnosis)]]
+mmmtSamps=sentrix[rownames(pData)[grep("MMMT|poorly",pData$Diagnosis)]]
+gp=rep("ctrl",96)
+names(gp)=colnames(beta)
+gp[hgscSamps]="hgsc"
+gp[usSamps]="utSer"
+gp[ueSamps]="utEnd"
+gp[mmmtSamps]="mmmt"   
+gp2=gp
+gp2[gp=="ctrl"]=diagnosis[names(gp)[gp=="ctrl"]]
+gp2[gp2=="mmmt"]="unclass"
+gp3Nms=c("EM","FM","Unclass","EEC","HGSOC","CM","USC")
+gp2=gsub(" ","",gp2)
+names(gp3Nms)=unique(gp2)
+gp3=gp3Nms[gp2]
+names(gp3)=names(gp2)
+tum=rep(1,96)
+names(tum)=colnames(beta)
+tum[normSamps]=0
+hgscNorm=probF[,which(colnames(probF)%in%c(normSamps,hgscSamps))]
+hgscNormS=hgscNorm[apply(beta[,normSamps],1,max)<.1,]
+tumLocs=which(colnames(hgscNorm)%in%hgscSamps)
+des=cbind(rep(1,59),rep(0,59))
+des[tumLocs,2]=1
+```
+
+```{r echo=FALSE, eval=FALSE}
+## annotation using liftover
+require(rtracklayer)
+require(GenomicRanges)
+allAnn=getAnnotation(hgscNorm)   # long time loading
+annRanges= makeGRangesFromDataFrame(allAnn[,1:4],
+                              keep.extra.columns=T,
+                              ignore.strand=FALSE,
+                              seqinfo=NULL,
+                              seqnames.field=c("seqnames", "seqname",
+                                               "chromosome", "chrom",
+                                               "chr", "chromosome_name",
+                                               "seqid"),
+                              start.field="pos",
+                              end.field="pos",
+                              strand.field="strand",
+                              starts.in.df.are.0based=FALSE)
+     
+chain=import.chain("hg19ToHg38.Over.chain")
+hg38Locs=liftOver(annRanges,chain)
+#hg38Locs2=liftOver(allAnn[,1:2],chain)
+hg38LocsDF=data.frame(hg38Locs)
+rownames(hg38LocsDF)=hg38LocsDF$group_name
+pos38=start(unlist(hg38Locs))
+allAnn=data.frame(allAnn,"pos.hg19"=allAnn$pos)
+allAnn$pos=rep(NA,dim(allAnn)[1])
+allAnn[hg38LocsDF$Name,"pos"]=hg38LocsDF[,"start"]
+```
+
+
+### *Differentially Methylated Region Identifying*
+
+&nbsp;&nbsp;&nbsp; After methylation data reading, CpG-dense regions including islands, shores, and shelves were filtered within 1,500 bases of the transcription start site. Then the ```bumphunter``` algorithm [16] was applied, with a bootstrap null, cutoff of 0.2 and 100 iterations, to identify differentially methylated regions (DMRs) between HGSC tumors and normal ovarian samples. After bumphunter, the 1,000 most variable methylated probe were selected for subsequent analysis. At the same time, DMRs containing at least 2 differentially methylated probes were also selected for comparison.
+
+```{r echo=FALSE, message=FALSE}
+## Functions
+
+roc=function(pred,outcome,keep.dir=FALSE){
+  if(!keep.dir){if(mean(pred[outcome==0],na.rm=T)>mean(pred[outcome==1],na.rm=T)) pred=-pred}
+  outcome=outcome[!is.na(pred)]
+  pred=pred[!is.na(pred)]
+  n0=sum(outcome==0)
+  n1=sum(outcome==1)
+  thresh=sort(unique(pred),decreasing=T)
+  tfr=fpr=rep(0,length(thresh)+1)
+  for(i in 1:length(thresh)){
+    k=sum(pred>=thresh[i])
+    tfr[i+1]=sum(outcome[pred>=thresh[i]])/n1
+    fpr[i+1]=(k-sum(outcome[pred>=thresh[i]]))/n0}
+  return(cbind(tfr,fpr))
+}
+
+## function to plot a diff. meth. region
+plotRegion=function(i,bmps=bumps100,ann=annIP,aAnn=allAnn){
+  x=bmps$table[i,]
+  names(x)=colnames(bmps$table)
+  pbs=rownames(ann)[x[1,"indexStart"]:x[1,"indexEnd"]]
+  gene=names(sort(table(unlist(strsplit(ann[pbs,"UCSC_RefGene_Name"],";"))),decreasing=T))[1]
+  chr=x["chr"]
+  locs=aAnn[pbs,"pos"]
+  loc=paste(chr,paste(min(locs),max(locs),sep=":"),sep=" ")
+  meth=apply(beta[pbs,],2,mean,na.rm=T)
+  par(mfrow=c(2,1))
+  boxplot(meth~gp,las=2,range=0)
+  title(main=paste(gene,loc,sep=", "))
+  stripchart(meth~gp,method="jitter",vertical=T,add=T,pch=16)
+  plot.roc(roc(meth,tum))
+}
+
+## function to return an auc for each diff. meth. region
+statsRegion=function(i,bmps=bumps100,ann=annIP,bta=beta,tm=tum,aAnn=allAnn){
+  x=bmps$table[i,]
+  names(x)=colnames(bmps$table)
+  n=x["L"]
+  pbs=rownames(ann)[x[1,"indexStart"]:x[1,"indexEnd"]]
+  chr=x["chr"]
+  locs=aAnn[pbs,"pos"]
+  loc=paste(chr,paste(min(locs),max(locs),sep=":"),sep=" ")
+  pbs.c=paste(pbs,collapse=",")
+  genes=paste(names(sort(table(unlist(strsplit(ann[pbs,"UCSC_RefGene_Name"],";"))),decreasing=T)),collapse=",")
+  meth=apply(bta[pbs,],2,mean,na.rm=T)
+  auc=round(auc.roc(roc(meth,tm)),2)
+  ans=data.frame(I(loc),n,auc,I(pbs.c),I(genes))
+  names(ans)=c("loc","n.tags","auc","probes","genes")
+  return(ans)
+}
+
+## region plotting function
+plotReg=function(i,bmps=bumps100,ann=annIP,bet=beta,tm=tum){
+  x=bmps$table[i,]
+  names(x)=colnames(bmps$table)
+  n=x["L"]
+  loc=paste(x["chr"],paste(x[c("start","end")],collapse=":"),sep=" ")
+  pbs=rownames(ann)[x[1,"indexStart"]:x[1,"indexEnd"]]
+  locs=ann[pbs,"pos"]
+  ord=order(locs)
+  
+  betaI=bet[pbs[ord],]
+  Btum=apply(betaI[,tm==1],1,mean,na.rm=T)
+  Bnorm=apply(betaI[,tm==0],1,mean,na.rm=T)
+  plot(locs[ord],Btum,ylim=c(0,1),type="l",lwd=2,col="red",ylab="beta",xlab="location")
+  genes=paste(names(sort(table(unlist(strsplit(ann[pbs,"UCSC_RefGene_Name"],";"))),decreasing=T)),collapse=",")
+  title(main=genes)
+  lines(locs[ord],Bnorm,lwd=2,col="blue")
+}
+
+aucroc=function(x,gp) return(auc.roc(roc(x,gp)))
+```
+
+```{r echo=FALSE, eval=FALSE}
+## Look at promotor islands
+library("IlluminaHumanMethylationEPICanno.ilm10b2.hg19", lib.loc="/Library/Frameworks/R.framework/Versions/3.5/Resources/library")
+islandProm=intersect(
+    rownames(beta)[(Islands.UCSC[rownames(beta),2]!="OpenSea")],
+    rownames(beta)[
+    grep("TSS1500",Other[rownames(beta),"GencodeBasicV12_Group"])
+                   ])
+
+hgscNormIP=hgscNorm[rownames(beta)%in%islandProm,]
+hgscNormIPS=hgscNorm[rownames(beta)%in%islandProm & apply(beta[,normSamps],1,max)<.2,]
+bumps100=bumphunter(hgscNormIPS,design=des,cutoff=.2,null="bootstrap",coef=2,B=100,type="Beta")
+
+annIP=getAnnotation(hgscNormIPS)     # annotation
+#allAnn=getAnnotation(hgscNorm) 
+#source("~/Dropbox/Methylation/illumina/functions.r")
+
+## island status
+library("IlluminaHumanMethylationEPICanno.ilm10b2.hg19", lib.loc="/Library/Frameworks/R.framework/Versions/3.5/Resources/library")
+islands=Islands.UCSC[,"Relation_to_Island"];names(islands)=rownames(Islands.UCSC)
+islands[grep("Shelf",Islands.UCSC[,"Relation_to_Island"])]="Shelf"
+islands[grep("Shore",Islands.UCSC[,"Relation_to_Island"])]="Shore"
+islands[grep("Sea",islands)]="Sea"
+
+betaSDS=apply(beta,1,sd,na.rm=T)
+threshSDS=sort(betaSDS,decreasing=T)[5000]
+threshSDSisland=sort(betaSDS[which(islands[names(betaSDS)]=="Island")],decreasing=T)[5000]
+threshSDSNseas=sort(betaSDS[which(islands[names(betaSDS)]!="OpenSea")],decreasing=T)[5000]
+```
+
+```{r echo=FALSE, eval=FALSE}
+## identify all regions having mutliple tags
+multiTags1=(1:dim(bumps100$table)[1])[bumps100$table$L>1]
+multiTags=multiTags1
+### stats for all samps
+stats=statsRegion(multiTags[1])
+for(i in 2:length(multiTags)) stats[i,]=statsRegion(multiTags[i])[1,]
+stats=stats[order(-stats$auc),]
+#write.table(stats,quote=F,row.names=F,sep="\t",file="statistics.txt")
+
+## stats only for hgsc vs normal
+statsHgsc=statsRegion(multiTags[1],bta=beta[,colnames(hgscNormIPS)],tm=tum[colnames(hgscNormIPS)])
+for(i in 2:length(multiTags)) statsHgsc[i,]=statsRegion(multiTags[i],bta=beta[,colnames(hgscNormIPS)],tm=tum[colnames(hgscNormIPS)])[1,]
+statsHgsc=statsHgsc[order(-statsHgsc$auc),]
+#write.table(statsHgsc,quote=F,row.names=F,sep="\t",file="statisticsHgsc.txt")
+
+## high specific methylation HGSOC & Normal(72438 probes) then 1000 most variable probes
+beta1 <- beta[rownames(hgscNormIPS),]
+beta2 <- beta1[,colnames(hgscNormIPS)]
+beta2SDS=apply(beta2,1,sd,na.rm=T)
+threshSDS2=sort(beta2SDS,decreasing=T)[1001]
+beta3<-beta2[beta2SDS>threshSDS2,]
+#save(beta3T,file="beta3T.RData")
+
+## High confidence DMRs (2+ DM probes)
+topPbs=statsHgsc$probes
+topPs=unlist(sapply(topPbs,strsplit,split=","))
+topGns=annIP[topPs,"UCSC_RefGene_Name"]
+geti=function(x,i=1) return(x[i])
+topGs=sapply(strsplit(topGns,split=";"),geti)
+pdf("ovarianHeat.pdf")
+heatDat=beta[topPs,]
+```
+
+### *NMF Consensus Clustering*
+
+&nbsp;&nbsp;&nbsp; After DMR identification, consensus clustering of DNA methylation profile was performed using the ```NMF``` package [17, 18]. To estimate the best consensus clustering groups, a rank range of 2 to 5 groups were used for NMF clustering respectively and the cophenetic correlation values were calculated for each rank value. Then candidate genes in each group were ranked according to area under ROC curve (AUC) calculated on HGSC tumors and normal ovarian samples.
+
+```{r echo=FALSE, eval=FALSE}
+## High specific methylation HGSOC & Normal(72438 probes) then top 1000 variable probes
+beta3T <- t(beta3)
+res3_k2r30 <- nmf(beta3T,2,nr=30)
+res3_k3r30 <- nmf(beta3T,3,nr=30)
+res3_k4r30 <- nmf(beta3T,4,nr=30)
+res3_k5r30 <- nmf(beta3T,5,nr=30)
+#save(res3_k2r30,res3_k3r30,res3_k4r30,res3_k5r30, file='resHD.RData')
+#load("~/Dropbox/Methylation/illumina/res3.RData")
+
+## High confidence DMRs (2+ DM probes),294 probes
+#rownames(heatDatT)
+heatDatT <- t(heatDat)
+resHD_k2r30 <- nmf(heatDatT,2,nr=30)
+resHD_k3r30 <- nmf(heatDatT,3,nr=30)
+resHD_k4r30 <- nmf(heatDatT,4,nr=30)
+resHD_k5r30 <- nmf(heatDatT,5,nr=30)
+#save(resHD_k2r30,resHD_k3r30,resHD_k4r30,resHD_k5r30, file='resHD.RData')
+```
+
+### *Reproducibility*
+
+&nbsp;&nbsp;&nbsp; Everything presented in this report are reproduced in the R markdown file ```Final_Report.Rmd```. In order to save time for knitting, the imported methylation dataset and data with prelimiary exploration have been saved as ```data.RData```, which has been updated into a shared Dropbox folder. The uploaded data can be used in order to reproduce the exact same results in this report within shorter time because the methylation data is large and NMF algorithm takes a long time.
+
+```{r echo=FALSE, message=FALSE}
+load("~/Dropbox/Methylation/illumina/data.RData")
+```
+
+## Results and Discussion
+
+&nbsp;&nbsp;&nbsp; This project aims to explore and identify highly specific differentially methylated regions in HGSOC tissues as methylation biomarkers for HGSOC detection. DNA methylation data was achieved by performing Illumina MethylationEpic array analysis on 96 malignant and healthy gynecologic tissues. After preliminary selection of candidate DMRs, NMF algorithm was applied for consensus clustering of DNA methylation profile to generate optimum consensus methylation clusters. Candidate methylation biomarkers were then ranked and selected from each cluster based on their AUCs calculated on HGSC tumors and normal ovarian samples.
+
+### *Genome-wide methylation analysis*
+
+&nbsp;&nbsp;&nbsp; The 96 samples run on Illumina MethylationEpic array include 23 HGSOC, 37 non-HGSOC malignant, and 36 normal ovarian tissues. The 37 non-HGSOC tumor samples comprised 23 endometrioid endometrial (EEC), 10 serous endometrial (ESC), and 4 other poorly differentiated (possibly HGSOC), unclassified tumors. The normal-appearing ovarian tissues included 11 fallopian, 13 endometrial, and 12 endocervical mucosal epithelial samples (**Supplementary Table S1**). Previous study of the methylation data has performed unsupervised hierarchical clustering of the 5,000 most variable differentially methylated probes, which showed that the methylomes of HGSOC and non-HGSOC malignant were significantly distinguishable from normal ovarian samples [10]. Previous study has also demonstrated that the clustering pattern remained largely unchanged if the unsupervised analysis was performed using only probes located within CGIs, shores, and shelves [10], indicating that the exploration of gene candidate can be focued within these CpG-dense regions. **Figure 1** below presents the unsupervised hierarchical clustering of the 5,000 most variable CpG sites located within CpG islands, shores, and shelves of the 96 tissue samples.
+
+```{r echo=FALSE, out.width = '100%', fig.asp=0.9, fig.align="center"}
+require(pheatmap)
+## put island status in the left margin of heatmaps, subtype in the top margin of heatmaps
+## methylation levels
+blueColor=function(n=21,min=0.4){
+    blue=rgb(0,0,seq(min,1,length=n))}
+blue=rev(blueColor(8))
+
+#### subtypes, the vector gp contains subtypes
+subtypeCols=c("#3399FF","#99CCFF","#003366","#FF0000","#FFCC00","#FF6666","#993300")
+names(subtypeCols)=c("FM","EM","CM","HGSOC","USC","EEC","Unclass")
+anncol=data.frame("Subtype"=gp3[colnames(beta)])
+
+islandCols=gray(c(0.2,0.4,0.6,1))
+names(islandCols)=c("Sea","Shelf","Shore","Island")
+anncolors=list("Subtype"=subtypeCols[c("CM","EM","FM","HGSOC","USC","EEC","Unclass")],"CpGs"=islandCols)
+
+## CGIs, shores, and shelves
+seaNSDpbs=names(betaSDS)[which(islands[names(betaSDS)]!="OpenSea" & betaSDS>=threshSDSNseas)]
+annrow=data.frame("CpGs"=islands[seaNSDpbs])
+rownames(annrow)=seaNSDpbs
+pheatmap(beta[seaNSDpbs,],scale="none",col=blue,annotation_col=anncol,annotation_row=annrow,annotation_colors=anncolors,show_rownames=F,show_colnames=F)
+```
+**Figure 1.** Methylation heatmap of 5000 most differentially methylated probes located within CpG islands, shores and shelves of the 96 samples.
+
+### *Selection of Candidate Methylation Regions*
+
+&nbsp;&nbsp;&nbsp; In order to identify candidate methylation genes for translation into locus-specific methylation biomarker assays, bioinformatic algorithms were applied to smooth methylation levels across adjacent CpG sites [25]. Starting with 866,238 probes used in Illumina MethylationEpic assay for the analysis of 96 tissue samples, CpG sites lyin in CpG-dense regions (islands, shores, and shelves) within 1,500 bp of the transcription start site were first selected, giving 137,670 probes. Then 72,438 probes with high-specificity methylation, whose $\beta$ < 0.2 in normal ovarian samples were selected for subsequent consensus clustering using NMF algorithm. Moreover, DMRs containing at least 2 differentially methylated probes within the same region were selected, resulting in 294 probes located in these 91 high-confidence DMRs (**Supplementary Table S2**). Methylation heatmap of these 294 probes in 96 ovarian tissue samples is presented in **Figure 2**.
+
+```{r echo=FALSE, out.width='100%', fig.asp=0.75, fig.align="center"}
+## heatmap
+require(pheatmap)
+annrow=data.frame("CpGs"=islands[rownames(heatDat)])
+rownames(annrow)=rownames(heatDat)
+pheatmap(heatDat,scale="none",col=blue,annotation_col=anncol,annotation_row=annrow,annotation_colors=anncolors,show_rownames=F,show_colnames=F)
+```
+**Figure 2.** Methylation heatmap of 294 differenrially methylated probes located within 91 high-confidence DMRs of the 96 ovarian tissue samples.
+
+### *Identification of Candidate Genes Using Consensus Methylation Clustering*
+
+&nbsp;&nbsp;&nbsp; After preliminary selection of differentially methylated probes, a nonnegative matrix factorization (NMF) algorithm was applied to analyze the the correlations between methylation patterns to identify complementary biomarkers for screening. First, consensus clustering was performed for the methylation data of selected 294 probes. Cophenetic correlation coefficients for rank ranging from 2 to 5 were calculated and shown in Figure 3, among which cophenetic correlation has the highest value of 0.9917 when rank equals 4. Therefore the selected 274 probes were grouped into 4 (rank = 4) consensus methylation clusters, as shown in Figure 4. There were 104, 78, 53, and 59 probes grouped into clusters 1 to 4, respectively. At the same time, 93 DNA methylation genes represented by these 294 probes were also grouped into four clusters(as listed in **Supplementary Table S3**). 
+
+```{r echo=FALSE, out.width='50%', fig.asp=1, fig.align="center"}
+##High confidence DMRs (2+ DM probes),294 probes
+coph <- c(cophcor(resHD_k2r30),cophcor(resHD_k3r30),cophcor(resHD_k4r30),cophcor(resHD_k5r30))
+k <- c(2,3,4,5)
+plot(k, coph, type="b",pch=23, xlab="Rank (number of cluster)", ylab="Cophenetic Correlation",ylim=c(0.85,1),xaxt="n") 
+axis(side=1, at=k, labels = k, font = 10)
+```
+
+**Figure 3.** Cophenetic correlation coefficients for consensus clustering with rank ranging from 2 to 5. When rank = 4, cophenetic correlation has the highest value of 0.9917.
+
+```{r echo=FALSE, out.width='90%', fig.asp=0.8, fig.align="center"}
+#pdf("Consensusmap.pdf")
+#consensk2 <- consensusmap(resHD_k2r30)
+#consensk3 <- consensusmap(resHD_k3r30)
+consensk4 <- consensusmap(resHD_k4r30)
+#consensk5 <- consensusmap(resHD_k5r30)
+#dev.off()
+
+resHD_k4r30_cluster <-c(
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[1]]),
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[2]]),
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[3]]),
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[4]])) 
+```
+**Figure 4.** Correlation matrix showing four consensus clustering of methylation patterns with 274 probes in 96 tissue samples. Strong and weak correlations are shown in red and blue respectively.
+
+&nbsp;&nbsp;&nbsp; To identify highly sensitive and specific biomarkers for HGSOC detection, the candidate genes in each cluster group were ranked according to their AUC calculated on HGSC tumors and normal ovarian samples after consensus clustering, as listed in **Table 1** below. There is one methylation gene *HIST1H2BB* in cluster 1 and one gene *PCDHGA6* in cluster 2 with AUC over 0.92, and there are 7 genes (*LOC200726*, *PTPRN*, *IRX2*, etc.) in cluster 3 and 4 genes (*TUBB6*, *C6orf174*, et al) in cluster 4 over the AUC threshold respectively. This panel is consistent with the results published in previous study [10], and suggesting some new candidates such as *HIST1H2BB* and *PCDHGA6*. Though AUC of these genes may not as high as those picked up in previous study, including genes from all the four clusters can help prevent missing any of the major methylation within the data.
+
+```{r echo=FALSE}
+require(plyr)
+##High confidence DMRs (2+ DM probes),294 probes
+Tabk4r30 <- as.data.frame(predict(resHD_k4r30))
+colnames(Tabk4r30) <- c('NMF_cluster')
+Tabk4r30$NMF_cluster <- as.numeric(Tabk4r30$NMF_cluster)
+Tabk4r30 <- Tabk4r30 %>% 
+  rownames_to_column('probeID')
+gene <- annIP[Tabk4r30$probeID,"UCSC_RefGene_Name"]
+geti=function(x,i=1) return(x[i])
+genes <- sapply(strsplit(gene,split=";"),geti)
+Tabk4r30 <- cbind(Tabk4r30,genes)
+Tabk4r30 <- arrange(Tabk4r30, NMF_cluster)
+Tabk4r30<-Tabk4r30[complete.cases(Tabk4r30), ]
+
+GeneName <- unique(Tabk4r30$genes)
+
+geneAUC=function(i,bta=beta,tm=tum,Tab=Table) {   # Table is a dataframe with probeID, NMF_cluster and genes
+  GeneName <- unique(Tab$genes)
+  genes=GeneName[i]
+  pbs=with(Tab, probeID[genes==GeneName[i]])
+  pbs.c=paste(pbs,collapse=", ")
+  if (length(pbs)<2) {
+    meth=bta[pbs,]
+  } else {
+    meth=apply(bta[pbs,],2,mean,na.rm=T)
+  }
+  auc=round(auc.roc(roc(meth,tm)),2)
+  cluster=unique(with(Tab, NMF_cluster[genes==GeneName[i]]))
+  cluster.c=paste(cluster,collapse=", ")
+  ans=data.frame(I(genes),I(pbs.c),auc,I(cluster.c))
+  names(ans)=c("genes","probes","auc","NMF_cluster")
+  return(ans)
+}
+
+TabAUC=geneAUC(1,bta=beta,tm=tum,Tab=Tabk4r30)
+for(i in 2:length(unique(Tabk4r30$genes))) TabAUC[i,]=geneAUC(i,bta=beta,tm=tum,Tab=Tabk4r30)[1,]
+
+C1 <- TabAUC[TabAUC$NMF_cluster==1 & TabAUC$auc>0.92,]
+C2 <- TabAUC[TabAUC$NMF_cluster==2 & TabAUC$auc>0.92,]
+C3 <- TabAUC[TabAUC$NMF_cluster==3 & TabAUC$auc>0.92,]
+C4 <- TabAUC[TabAUC$NMF_cluster==4 & TabAUC$auc>0.92,]
+TabtopAUC <- as.data.frame(rbind(C1,C2,C3,C4))
+rownames(TabtopAUC)<- 1:nrow(TabtopAUC)
+```
+
+```{r echo=FALSE, message=FALSE}
+kable(TabtopAUC, format="latex", 
+      caption="Top Candidate Methylation Genes (within 93 genes) Identified in 4 Clusters", booktabs=T) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width =F,position = "center") %>%
+  column_spec(2, width = "8cm")
+```
+
+&nbsp;&nbsp;&nbsp; Moreover, since the 294 probes are selected from the 137,670 probes by filtering those probes located in DMRs that contained only one differentially methylated probe within the same region, it is possible that those filtered regions/genes can still serve as good biomarkers for HGSOC detection. Therefore, methylation data of 137,670 probes were utilized instead for consensus clustering and identification of candidate genes. Because running NMF algorithm on 137,670 probes occupied too much computer memory, the most variable 1000 probes within these 137,670 probes were selected and grouped with consensus clustering using NMF algorithm. Similarly, cophenetic correlation coefficients for rank ranging from 2 to 5 were calculated and shown in **Figure 5**, among which cophenetic correlation has the highest value of 0.9755 when rank value equals 2. Then the most variable 1000 probes were grouped into 2 (rank = 2) consensus methylation clusters, as shown in **Figure 6**, with 546 probes in cluster 1 and 454 probes in cluster 2 respectively. At the same time, 466 DNA methylation genes where these 1000 probes located were also grouped into two clusters. 
+
+```{r echo=FALSE, out.width='50%', fig.asp=1, fig.align="center"}
+## High specific methylation HGSOC & Normal(72438 probes) then 1000 variable CpGs
+coph1 <- c(cophcor(res3_k2r30), cophcor(res3_k3r30), cophcor(res3_k4r30), cophcor(res3_k5r30))
+k <- c(2,3,4,5)
+plot(k, coph1, type="b", pch=23,xlab="Rank (number of cluster)", ylab="Cophenetic Correlation",ylim=c(0.85,1),xaxt="n")
+axis(side=1, at=k, labels = k, font = 10)
+```
+
+**Figure 5.** Cophenetic correlation coefficients for consensus clustering with rank ranging from 2 to 5. When k =2, cophenetic correlation has the highest value of 0.9755.
+
+```{r echo=FALSE, out.width='90%', fig.asp=0.8, fig.align="center"}
+## high specific methylation HGSOC & Normal(72438 probes) then 1000 variable CpGs
+consensk2 <- consensusmap(res3_k2r30)
+res3_k2r30_cluster <-c(
+  length((lapply(cut(consensk2$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[1]]),
+  length((lapply(cut(consensk2$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[2]])) 
+```
+**Figure 6.** Correlation matrix showing two consensus clustering of methylation patterns using 1000 most variable probes in 59 samples (HGSOC & Normal tissue samples). Strong and weak correlations are shown in red and blue respectively.
+
+```{r echo=FALSE}
+## nr=2
+TabRes3k2r30 <- as.data.frame(predict(res3_k2r30))
+colnames(TabRes3k2r30) <- c('NMF_cluster')
+TabRes3k2r30$NMF_cluster <- as.numeric(TabRes3k2r30$NMF_cluster)
+TabRes3k2r30 <- TabRes3k2r30 %>% 
+  rownames_to_column('probeID')
+gene <- annIP[TabRes3k2r30$probeID,"UCSC_RefGene_Name"]
+geti=function(x,i=1) return(x[i])
+genes <- sapply(strsplit(gene,split=";"),geti)
+TabRes3k2r30 <- cbind(TabRes3k2r30,genes)
+TabRes3k2r30 <- arrange(TabRes3k2r30, NMF_cluster)
+TabRes3k2r30<-TabRes3k2r30[complete.cases(TabRes3k2r30), ]
+
+GeneName <- unique(TabRes3k2r30$genes)
+TabAUC_res3k2=geneAUC(1,bta=beta,tm=tum,Tab=TabRes3k2r30)
+for(i in 2:length(GeneName)) TabAUC_res3k2[i,]=geneAUC(i,bta=beta,tm=tum,Tab=TabRes3k2r30)[1,]
+TabAUC_res3k2=TabAUC_res3k2[order(-TabAUC_res3k2$auc),]
+write.table(TabAUC_res3k2,quote=F,row.names=F,sep="\t",file="Table of AUCs in Res3.txt")
+
+C1 <- TabAUC_res3k2[TabAUC_res3k2$NMF_cluster==1 & TabAUC_res3k2$auc>0.95,]
+C2 <- TabAUC_res3k2[TabAUC_res3k2$NMF_cluster==2 & TabAUC_res3k2$auc>0.95,]
+
+TabtopAUC_res3k2 <- as.data.frame(rbind(C1,C2))
+rownames(TabtopAUC_res3k2)<- 1:nrow(TabtopAUC_res3k2)
+```
+
+&nbsp;&nbsp;&nbsp; Similarly, the candidate genes in each cluster group were ranked according to AUC calculated on HGSC tumors and normal ovarian samples after consensus clustering to select gene panel as candidate biomarkers . With a threshold of 0.95, the top 5 genes in cluster 1 and the top 16 genes in cluster 2 were selected (as listed in **Table 2**). Some genes listed in **Table 1**, such as *HIST2H2BF* and *KCNK2*, were also presented here, while obviously more new candidate methylation gene were selected. These genes, on which there may only be one methylation probe located, can be considered to serve as methylation biomarkers in locus-specific assays for HGSOC detection.
+
+```{r echo=FALSE, message=FALSE}
+kable(TabtopAUC_res3k2, format="latex", 
+      caption="Top Candidate Methylation Genes (within 466 genes) Identified in 2 Clusters", booktabs=T) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width =F,position = "center") %>%
+   column_spec(2, width = "8cm")
+```
+
+&nbsp;&nbsp;&nbsp; In addition, since the cophenetic correlation coeffient of rank equalling 4 is 0.9726, which is very close to that of rank equalling 2, the consensus clustering of the most variable 1000 probes into 4 (rank = 4) methylation clusters were also taken into consideration, as shown in **Figure 7**. The NMF algorithm grouped 369 probes into cluster 1, 231 probes into cluster 2, 205 probes into cluster 3, 195 probes into cluster 4 respectively. Meanwhile, the 466 DNA methylation genes where these 1000 probes located were also grouped into four clusters. In a similar way as above, the candidate genes in each cluster group were ranked according to AUC calculated on HGSC tumors and normal ovarian samples after consensus clustering. With a threshold of 0.95, there are 2 genes selected in cluster 1 (*CD8A* and *NXPE3*), 3 genes selected in cluster 2 (*ZBTB16*, *HOXC13* and *C14orf23*), 7 genes selected in cluster 3 (*HIST2H2BA*, *PCDHGA4*, etc) and 4 genes in cluster 4 (*ANTXR2*, *TACR2*, etc), as listed in **Table 3**. All the 16 genes picked up here were covered in the gene panel with rank =2, which include 21 gene candidates. Though consensus clustering with higher cophenetic correlation coeffient (rank =2) can provide more gene candidates using the same AUC threshold, more clustering groups can help pick up the combination of gene candidates if even smaller gene panel is desired. 
+
+```{r echo=FALSE, out.width='90%', fig.asp=0.8, fig.align="center"}
+## nr=4
+consensk4 <- consensusmap(res3_k4r30)
+res3_k4r30_cluster <-c(
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[1]]),
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[2]]), 
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[3]]), 
+  length((lapply(cut(consensk4$Rowv,0.5)$lower, function(l) rapply(l, function(i) i)))[[4]])) 
+```
+**Figure 7.** Correlation matrix showing four consensus clustering of methylation patterns using most variable 1000 probes in 59 samples (HGSOC & Normal tissue samples). Strong and weak correlations are shown in red and blue respectively.
+
+```{r echo=FALSE}
+## nr=4
+TabRes3k4r30 <- as.data.frame(predict(res3_k4r30))
+colnames(TabRes3k4r30) <- c('NMF_cluster')
+TabRes3k4r30$NMF_cluster <- as.numeric(TabRes3k4r30$NMF_cluster)
+TabRes3k4r30 <- TabRes3k4r30 %>% 
+  rownames_to_column('probeID')
+gene <- annIP[TabRes3k4r30$probeID,"UCSC_RefGene_Name"]
+geti=function(x,i=1) return(x[i])
+genes <- sapply(strsplit(gene,split=";"),geti)
+TabRes3k4r30 <- cbind(TabRes3k4r30,genes)
+TabRes3k4r30 <- arrange(TabRes3k4r30, NMF_cluster)
+TabRes3k4r30<-TabRes3k4r30[complete.cases(TabRes3k4r30), ]
+
+GeneName <- unique(TabRes3k4r30$genes)
+TabAUC_res3k4=geneAUC(1,bta=beta,tm=tum,Tab=TabRes3k4r30)
+for(i in 2:length(GeneName)) TabAUC_res3k4[i,]=geneAUC(i,bta=beta,tm=tum,Tab=TabRes3k4r30)[1,]
+TabAUC_res3k4=TabAUC_res3k4[order(-TabAUC_res3k4$auc),]
+write.table(TabAUC_res3k4,quote=F,row.names=F,sep="\t",file="Table of AUCs in Res3.txt")
+
+C1 <- TabAUC_res3k4[TabAUC_res3k4$NMF_cluster==1 & TabAUC_res3k4$auc>0.95,]
+C2 <- TabAUC_res3k4[TabAUC_res3k4$NMF_cluster==2 & TabAUC_res3k4$auc>0.95,]
+C3 <- TabAUC_res3k4[TabAUC_res3k4$NMF_cluster==3 & TabAUC_res3k4$auc>0.95,]
+C4 <- TabAUC_res3k4[TabAUC_res3k4$NMF_cluster==4 & TabAUC_res3k4$auc>0.95,]
+TabtopAUC_res3k4 <- as.data.frame(rbind(C1,C2,C3,C4))
+rownames(TabtopAUC_res3k4)<- 1:nrow(TabtopAUC_res3k4)
+```
+
+```{r echo=FALSE, message=FALSE}
+kable(TabtopAUC_res3k4, format="latex", 
+      caption="Top Candidate Methylation Genes (within 466 genes)Identified in 4 Clusters", booktabs=T) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width =F,position = "center") %>%
+  column_spec(2, width = "8cm")
+```
+
+## Conclusion
+
+&nbsp;&nbsp;&nbsp; In summary, using a comprehensive epigenomics approach, we have identified promising DNA methylation biomarkers for HGSOC screening. These highly specific methylation genes/loci will serve as candidate regions to design methylation-specific primers and probes in locus-specific assays (e.g. methylation-specific PCR) for HGSOC detection. At the same, this approach can be applied for the analysis of methylation data from other cancer types and potentially identify novel panels of methylation biomarkers for detection of other cancer types.
+
+## Reference
+
+1.	Goossens N, Nakagawa S, Sun XC, Hoshida Y. Cancer biomarker discovery and validation. Transl Cancer Res 2015;4(3):256-69.
+2.	Soda M, Choi YL, Enomoto M, Takada S, Yamashita Y, Ishikawa S, et al. Identification of the transforming EML4-ALK fusion gene in non-small-cell lung cancer. Nature 2007;448(7153):561-U3.
+3.	Mosse YP, Laudenslager M, Longo L, Cole KA, Wood A, Attiyeh EF, et al. Identification of ALK as a major familial neuroblastoma predisposition gene. Nature 2008;455(7215):930-U22.
+4.	Wooster R, Weber BL. Breast and ovarian cancer. New Engl J Med 2003;348(23):2339-47 doi DOI 10.1056/NEJMra012284.
+5.	Baylin SB, Ohm JE. Epigenetic gene silencing in cancer - a mechanism for early oncogenic pathway addiction? Nat Rev Cancer 2006;6(2):107-16.
+6.	Bartlett TE, Chindera K, McDermott J, Breeze CE, Cooke WR, Jones A, et al. Epigenetic reprogramming of fallopian tube fimbriae in BRCA mutation carriers defines early ovarian cancer evolution. Nat Commun 2016;7.
+7.	Koch A, Joosten SC, Feng Z, de Ruijter TC, Draht MX, Melotte V, et al. Analysis of DNA methylation in cancer: location revisited. Nat Rev Clin Oncol 2018;15(7):459-467.
+8.	Imperiale TF, Ransohoff DF, Itzkowitz SH, Levin TR, Lavin P, Lidgard GP, et al. Multitarget Stool DNA Testing for Colorectal-Cancer Screening. New Engl J Med 2014;370(14):1287-97.
+9. Society AC. Cancer facts and figures 2017. Atlanta, GA: American Cancer Society; 2017.
+10.	Pisanic TR, Cope LM, Lin SF, Yen TT, Athamanolap P, Asaka R, et al. Methylomic Analysis of Ovarian Cancers Identifies Tumor-Specific Alterations Readily Detectable in Early Precursor Lesions. Clin Cancer Res 2018;24(24):6536-47 doi 10.1158/1078-0432.Ccr-18-1199.
+11. Aryee MJ, Jaffe AE, Corrada-Bravo H, Ladd-Acosta C, Feinberg AP, Hansen KD, Irizarry RA (2014). Minfi: A flexible and comprehensive Bioconductor package for the analysis of Infinium DNA Methylation
+microarrays. Bioinformatics, 30(10), 1363-1369. doi: 10.1093/bioinformatics/btu049 (URL: http://doi.org/10.1093/bioinformatics/btu049).
+12. Huber W, Carey VJ, Gentleman R, Anders S, Carlson M, Carvalho BS, et al. Orchestrating high-throughput genomic analysis with Bioconductor. Nat Methods 2015;12:115.
+13. Adrian A. Dragulescu and Cole Arendt (2018). xlsx: Read, Write, Format Excel 2007 and Excel
+  97/2000/XP/2003 Files. R package version 0.6.1. (URL: https://CRAN.R-project.org/package=xlsx).
+14. Hansen KD. IlluminaHumanMethylationEPICanno.ilm10b2.hg19: Annotation for Illumina's EPIC methylation arrays; R package version 0.6.0;2016.
+15. Kent WJ, Sugnet CW, Furey TS, Roskin KM, Pringle TH, Zahler AM, et al. The Human Genome Browser at UCSC. Genome Res 2002;12:996-1006.
+16. Jaffe AE, Murakami P, Lee H, Leek JT, Fallin DM, Feinberg AP, Irizarry RA (2012). Bump hunting to identify differentially methylated regions in epigenetic epidemiology studies. International journal of epidemiology, 41 (1), 200-209. doi: 10.1093/ije/dyr238 (URL: http://doi.org/10.1093/ije/dyr238).
+17. Renaud Gaujoux, Cathal Seoighe (2010). A flexible R package for nonnegative matrix factorization. BMC Bioinformatics 2010, 11:367. (http://www.biomedcentral.com/1471-2105/11/367).
+18. Huang RL, Su PH, Liao YP, Wu TI, Hsu YT, Lin WY, et al. Integrated Epigenomics Analysis Reveals a DNA Methylation Panel for Endometrial Cancer Detection Using Cervical Scrapings. Clin Cancer Res 2017;23(1):263-72.
+
