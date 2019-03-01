@@ -1,0 +1,145 @@
+---
+title: "Supplementary Information"
+author: "Ye Zhang"
+date: "Biomedical Engineering Department, Johns Hopkins University, Baltimore, MD 21218"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=FALSE, include=FALSE, cache=FALSE}
+## install packages
+packages<-c("devtools","knitr","rmarkdown","rtracklayer","plyr","dplyr","tibble","kableExtra","NMF")
+
+for (i in packages){
+  if(!require(i,character.only = T,quietly=T,warn.conflicts = F)){
+    install.packages(i, repos = "http://cran.us.r-project.org")
+  }
+  require(i,character.only = T,quietly=T,warn.conflicts = F)
+}
+
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("minfi")   # Install minfi package
+#Sys.setenv(JAVA_HOME = "C:/Program Files/Java/jre1.8.0_181/")
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("IlluminaHumanMethylationEPICmanifest")
+
+#install.packages("rJava", type = 'source')
+#library(minfi)
+library(rmarkdown)
+library(knitr)
+library(rtracklayer)
+library(plyr)
+library(dplyr)
+library(tibble)
+library(kableExtra)
+library(NMF)
+```
+
+
+```{r echo=FALSE, message=FALSE}
+load("~/Dropbox/Methylation/illumina/data.RData")
+```
+
+
+```{r echo=FALSE, message=FALSE}
+require(dplyr)
+require(kableExtra)
+
+Samples = pData
+Samples$Sample.no. = rownames(Samples)
+rownames(Samples) <- 1:nrow(Samples)
+Samples = Samples %>% select(Sample.no., Diagnosis)
+Samples = as.data.frame(cbind(rownames(Samples), Samples))
+colnames(Samples)[1] = "No."
+
+kable(Samples, format="latex", longtable = TRUE,
+      caption="S1. 96 Tissue Samples for Illumina MethylationEpic Assay", booktabs=T) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width =F, latex_options = c("hold_position", "repeat_header"), position = "center") %>%
+  column_spec(3, width = "6cm") 
+```
+
+
+```{r echo=FALSE, message=FALSE}
+require(dplyr)
+require(kableExtra)
+
+DMRs = stats %>% select(loc, probes, genes)
+#unAsIs <- function(X) {
+#    if("AsIs" %in% class(X)) {
+#        class(X) <- class(X)[-match("AsIs", class(X))]
+#    }
+#    X
+#}
+#DMRs$probes = as.factor(unAsIs(DMRs$probes))
+#DMRs$genes = as.factor(unAsIs(DMRs$genes))
+
+DMRs$probes= gsub(",", ", ", DMRs$probes, fixed=TRUE)
+DMRs$genes= gsub(",", ", ", DMRs$genes, fixed=TRUE)
+rownames(DMRs)=1:nrow(DMRs)
+DMRs = as.data.frame(cbind(rownames(DMRs), DMRs))
+colnames(DMRs)[1] = "No."
+
+kable(DMRs[], format="latex", longtable = TRUE,
+      caption="S2. Location of Selected 294 Probes within 91 High-confidence DMRs", booktabs=T) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width =F, latex_options = c("hold_position", "repeat_header"), position = "center") %>%
+  column_spec(3:4, width = "5cm")
+```
+
+
+```{r echo=FALSE}
+require(plyr)
+require(NMF)
+##High confidence DMRs (2+ DM probes),294 probes
+Tabk4r30 <- as.data.frame(predict(resHD_k4r30))
+colnames(Tabk4r30) <- c('NMF_cluster')
+Tabk4r30$NMF_cluster <- as.numeric(Tabk4r30$NMF_cluster)
+Tabk4r30 <- Tabk4r30 %>% 
+  rownames_to_column('probeID')
+gene <- annIP[Tabk4r30$probeID,"UCSC_RefGene_Name"]
+geti=function(x,i=1) return(x[i])
+genes <- sapply(strsplit(gene,split=";"),geti)
+Tabk4r30 <- cbind(Tabk4r30,genes)
+Tabk4r30 <- arrange(Tabk4r30, NMF_cluster)
+Tabk4r30<-Tabk4r30[complete.cases(Tabk4r30), ]
+
+GeneName <- unique(Tabk4r30$genes)
+
+geneAUC=function(i,bta=beta,tm=tum,Tab=Table) {   # Table is a dataframe with probeID, NMF_cluster and genes
+  GeneName <- unique(Tab$genes)
+  genes=GeneName[i]
+  pbs=with(Tab, probeID[genes==GeneName[i]])
+  pbs.c=paste(pbs,collapse=", ")
+  if (length(pbs)<2) {
+    meth=bta[pbs,]
+  } else {
+    meth=apply(bta[pbs,],2,mean,na.rm=T)
+  }
+  auc=round(auc.roc(roc(meth,tm)),2)
+  cluster=unique(with(Tab, NMF_cluster[genes==GeneName[i]]))
+  cluster.c=paste(cluster,collapse=", ")
+  ans=data.frame(I(genes),I(pbs.c),auc,I(cluster.c))
+  names(ans)=c("genes","probes","auc","NMF_cluster")
+  return(ans)
+}
+
+TabAUC=geneAUC(1,bta=beta,tm=tum,Tab=Tabk4r30)
+for(i in 2:length(unique(Tabk4r30$genes))) TabAUC[i,]=geneAUC(i,bta=beta,tm=tum,Tab=Tabk4r30)[1,]
+```
+
+
+```{r echo=FALSE, message=FALSE}
+require(dplyr)
+require(kableExtra)
+
+kable(TabAUC, format="latex", longtable = TRUE,
+      caption="S3. 93 DNA methylation Genes Grouped into Four Clusters", booktabs=T) %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width =F, latex_options = c("hold_position", "repeat_header"), position = "center") %>%
+  column_spec(2, width = "6cm")
+```
+
